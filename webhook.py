@@ -1,28 +1,31 @@
 import os
 from flask import Flask, request
-from yookassa import WebhookNotification
 from telegram import Bot
 
-# Получаем токены из переменных окружения
+app = Flask(__name__)
+
+# Загружаем из Railway переменные
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 OPERATOR_CHAT_ID = int(os.getenv("OPERATOR_CHAT_ID"))
 
 bot = Bot(token=BOT_TOKEN)
-app = Flask(__name__)
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    notification = WebhookNotification(request.json)
+    data = request.json
 
-    if notification.event == 'payment.succeeded':
-        metadata = notification.object.metadata
-        user_id = int(metadata.get("tg_user_id"))
-        amount = notification.object.amount.value
+    if data.get("event") == "payment.succeeded":
+        payment_info = data.get("object", {})
+        metadata = payment_info.get("metadata", {})
+        user_id = metadata.get("tg_user_id")
+        amount = payment_info.get("amount", {}).get("value")
 
-        # Уведомляем пользователя
-        bot.send_message(chat_id=user_id, text=f"✅ Оплата прошла успешно! Сумма: {amount}₽")
-
-        # Уведомляем оператора
-        bot.send_message(chat_id=OPERATOR_CHAT_ID, text=f"✅ Онлайн-заказ оплачен на {amount}₽")
+        if user_id and amount:
+            try:
+                user_id = int(user_id)
+                bot.send_message(chat_id=user_id, text=f"✅ Оплата прошла успешно! Сумма: {amount}₽")
+                bot.send_message(chat_id=OPERATOR_CHAT_ID, text=f"✅ Онлайн-заказ оплачен на {amount}₽")
+            except Exception as e:
+                print(f"[Webhook Error] {e}")
 
     return '', 200
